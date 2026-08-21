@@ -1,0 +1,10 @@
+# Excursion Dazzle Tour & Travel — robots.txt
+
+User-agent: *
+Allow: /
+
+# Keep the admin panel and its assets out of search results
+Disallow: /admin.html
+Disallow: /firestore.rules
+
+Sitemap: https://excursiondazzle.in/sitemap.xml
