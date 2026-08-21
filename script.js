@@ -15,12 +15,12 @@
      if this site should run on its own project instead of reusing
      the existing one. Structure/behaviour is unchanged either way. */
   var FB_CFG = {
-    apiKey:            "AIzaSyCbsulWfheIDKZt5OShd82rkA9WVjXn2Xk",
-    authDomain:        "tirangatourandtravels.firebaseapp.com",
-    projectId:         "tirangatourandtravels",
-    storageBucket:     "tirangatourandtravels.firebasestorage.app",
-    messagingSenderId: "62225585711",
-    appId:             "1:62225585711:web:3540a255538d3556b758da"
+    apiKey: "AIzaSyDC1N1z6dwtIP3y_OfiAbHK2ORzrvuyX5g",
+  authDomain: "excuprsion-dazzle.firebaseapp.com",
+  projectId: "excuprsion-dazzle",
+  storageBucket: "excuprsion-dazzle.firebasestorage.app",
+  messagingSenderId: "563908059641",
+  appId: "1:563908059641:web:feb050f26dfdaed95a5d28"
   };
 
   var COLS = {
