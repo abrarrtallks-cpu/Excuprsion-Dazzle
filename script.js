@@ -2,8 +2,11 @@
    EXCURSION DAZZLE TOUR & TRAVEL — script.js  (Firebase Connected)
    All public pages pull live data from Firestore.
    Admin panel writes → pages reflect changes instantly on reload.
-   NOTE: Enquiries are NEVER written to Firestore — every enquiry/
-   booking action opens WhatsApp directly instead (see WA_NUM below).
+   NOTE: Tour/car booking buttons open WhatsApp directly (WA_NUM
+   below). The Contact page form instead writes a short-lived
+   document to the 'edazzle_mail' collection, which the Firebase
+   "Trigger Email" Extension picks up and emails to
+   info@excursiondazzle.in — see firestore.rules for its rules.
    ================================================================ */
 (function () {
   'use strict';
@@ -25,7 +28,7 @@
 
   var COLS = {
     tours: 'edazzle_tours', cars: 'edazzle_cars',
-    gallery: 'edazzle_gallery'
+    gallery: 'edazzle_gallery', mail: 'edazzle_mail'
   };
 
   /* ── DEFAULTS ─────────────────────────────────────────────── */
@@ -503,37 +506,95 @@
 
   /* ══════════════════════════════════════════════════
      CONTACT FORM
-     Enquiries are NEVER stored in Firebase/admin. The form only
-     builds a WhatsApp message from the entered details and opens
-     WhatsApp directly to Excursion Dazzle's number.
+     Submissions are written to the Firestore collection
+     COLS.mail ('edazzle_mail'). This collection is watched by
+     the "Trigger Email" Firebase Extension, which sends the
+     enquiry straight to info@excursiondazzle.in and then removes
+     the document — nothing is kept in the admin panel or shown
+     to the public; it only ever exists briefly as an outgoing
+     email queue item. See firestore.rules for the security rules
+     that lock this collection to write-only, no read/update/delete
+     from the browser.
   ══════════════════════════════════════════════════ */
   var cForm = document.getElementById('contactForm');
   if (cForm) {
     cForm.addEventListener('submit', function(e) {
       e.preventDefault();
-      var name    = (document.getElementById('cfName')    || {}).value || '';
-      var phone   = (document.getElementById('cfPhone')   || {}).value || '';
-      var email   = (document.getElementById('cfEmail')   || {}).value || '';
-      var message = (document.getElementById('cfMessage') || {}).value || '';
-      if (!name.trim() || !phone.trim()) { toast('Please enter your name and phone number.', 'err'); return; }
+      var gv = function(id) { return ((document.getElementById(id) || {}).value || '').trim(); };
+      var name     = gv('cfName');
+      var phone    = gv('cfPhone');
+      var email    = gv('cfEmail');
+      var city     = gv('cfCity');
+      var dest     = gv('cfDest');
+      var duration = gv('cfDuration');
+      var dates    = gv('cfDates');
+      var budget   = gv('cfBudget');
+      var adults   = gv('cfAdults');
+      var children = gv('cfChildren');
+      var pickup   = gv('cfPickup');
+      var accom    = gv('cfAccom');
+      var message  = gv('cfMessage');
+
+      if (!name || !phone || !email || !city) {
+        toast('Please fill in your name, phone, email and city.', 'err');
+        return;
+      }
+
       var btn = document.getElementById('cfSubmit');
-      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Opening WhatsApp…'; }
-      var lines = [
-        'Hi Excursion Dazzle Tour & Travel! I have an enquiry.',
-        'Name: ' + name,
-        'Phone: ' + phone
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…'; }
+
+      var travellers = (adults || '—') + ' Adult' + (adults === '1' ? '' : 's') +
+        (children && children !== '0' ? ', ' + children + ' Child' + (children === '1' ? '' : 'ren') : '');
+
+      var rows = [
+        ['Name', name], ['Phone / WhatsApp', phone], ['Email', email], ['City / Country', city],
+        ['Interested In', dest || '—'],
+        ['Trip Duration', duration || '—'],
+        ['Preferred Dates', dates || '—'],
+        ['Budget (per person)', budget || '—'],
+        ['Travellers', travellers],
+        ['Pickup Location', pickup || '—'],
+        ['Accommodation Preference', accom || '—'],
+        ['Special Requirements', message || '—']
       ];
-      if (email.trim())   lines.push('Email: ' + email);
-      if (message.trim()) lines.push('Message: ' + message);
-      var wa = 'https://wa.me/' + WA_NUM + '?text=' + encodeURIComponent(lines.join('\n'));
-      setTimeout(function() {
-        window.open(wa, '_blank');
-        cForm.style.display = 'none';
-        var ok = document.getElementById('formSuccess');
-        if (ok) ok.style.display = 'block';
-      }, 400);
+      var htmlBody = '<h2 style="font-family:sans-serif;color:#0B1E3F">New Website Enquiry — Excursion Dazzle</h2>' +
+        '<table style="font-family:sans-serif;font-size:14px;border-collapse:collapse">' +
+        rows.map(function(r) {
+          return '<tr><td style="padding:6px 12px;font-weight:700;color:#0B1E3F;vertical-align:top">' + r[0] +
+                 '</td><td style="padding:6px 12px;color:#333">' + String(r[1]).replace(/\n/g, '<br/>') + '</td></tr>';
+        }).join('') + '</table>' +
+        '<p style="font-family:sans-serif;font-size:12px;color:#888;margin-top:16px">Submitted via the Contact page on excursiondazzle.in</p>';
+      var textBody = rows.map(function(r) { return r[0] + ': ' + r[1]; }).join('\n');
+
+      onFB(function(db, f) {
+        f.addDoc(f.collection(db, COLS.mail), {
+          to: ['info@excursiondazzle.in'],
+          message: {
+            subject: 'New Website Enquiry from ' + name,
+            text: textBody,
+            html: htmlBody
+          },
+          replyTo: email,
+          createdAt: f.serverTimestamp()
+        }).then(function() {
+          showThankYou();
+        }).catch(function(err) {
+          console.warn('Enquiry send error:', err);
+          toast('Something went wrong — please try WhatsApp or call us instead.', 'err');
+          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Enquiry'; }
+        });
+      });
     });
   }
+
+  function showThankYou() {
+    var formWrap = document.getElementById('contactFormWrap');
+    var ok = document.getElementById('formSuccess');
+    if (formWrap) formWrap.style.display = 'none';
+    if (ok) { ok.style.display = 'block'; ok.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  }
+  window.showThankYou = showThankYou;
+
 
   /* ══════════════════════════════════════════════════
      PAGE INIT
