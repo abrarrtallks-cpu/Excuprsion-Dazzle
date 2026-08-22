@@ -341,7 +341,9 @@ input,select,textarea{font-family:inherit;box-sizing:border-box}
         <code>edazzle_cars</code> &rarr; cars.html &nbsp;&bull;&nbsp;
         <code>edazzle_gallery</code> &rarr; homepage gallery<br/><br/>
         <strong>How changes appear on website:</strong> Save a tour/vehicle/image here &rarr; visitor refreshes the page &rarr; new data appears automatically.<br/><br/>
-        <strong>Enquiries are not stored here.</strong> Every booking/enquiry button on the public site opens WhatsApp directly to +91 97977 06312 with the tour/car and customer details pre-filled &mdash; nothing is written to Firestore.<br/><br/>
+        <strong>Tour/car booking buttons</strong> across the site open WhatsApp directly to +91 97977 06312 with the tour/car pre-filled &mdash; nothing is written to Firestore for those.<br/><br/>
+        <strong>Contact page enquiries</strong> are emailed to info@excursiondazzle.in via a Google Apps Script Web App (<code>Code.gs</code>) &mdash; the form POSTs the enquiry directly to it, it sends the email, and nothing is written to Firestore or shown anywhere in this admin panel.<br/><br/>
+        <strong>One-time setup required:</strong> deploy <code>Code.gs</code> as an Apps Script Web App (see the setup comment at the top of that file) and paste the resulting URL into <code>APPS_SCRIPT_URL</code> near the top of <code>script.js</code>. Until that's done, the contact form automatically falls back to opening WhatsApp instead, so no enquiry is ever lost &mdash; it just won't arrive by email yet.<br/><br/>
         <strong>Firestore Rules:</strong> Use the hardened per-collection rules in <code>firestore.rules</code> (provided separately) &mdash; public content is read-only to visitors, only the signed-in admin can write.
       </div>
     </div>
@@ -482,12 +484,12 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
 // this site should run on its own project instead of reusing the
 // existing one. All admin logic/behaviour is unchanged either way.
 const FB = {
-   apiKey: "AIzaSyDC1N1z6dwtIP3y_OfiAbHK2ORzrvuyX5g",
-  authDomain: "excuprsion-dazzle.firebaseapp.com",
-  projectId: "excuprsion-dazzle",
-  storageBucket: "excuprsion-dazzle.firebasestorage.app",
-  messagingSenderId: "563908059641",
-  appId: "1:563908059641:web:feb050f26dfdaed95a5d28"
+  apiKey:"AIzaSyCbsulWfheIDKZt5OShd82rkA9WVjXn2Xk",
+  authDomain:"tirangatourandtravels.firebaseapp.com",
+  projectId:"tirangatourandtravels",
+  storageBucket:"tirangatourandtravels.firebasestorage.app",
+  messagingSenderId:"62225585711",
+  appId:"1:62225585711:web:3540a255538d3556b758da"
 };
 const app  = initializeApp(FB);
 const db   = getFirestore(app);

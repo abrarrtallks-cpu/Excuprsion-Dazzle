@@ -3,10 +3,10 @@
    All public pages pull live data from Firestore.
    Admin panel writes → pages reflect changes instantly on reload.
    NOTE: Tour/car booking buttons open WhatsApp directly (WA_NUM
-   below). The Contact page form instead writes a short-lived
-   document to the 'edazzle_mail' collection, which the Firebase
-   "Trigger Email" Extension picks up and emails to
-   info@excursiondazzle.in — see firestore.rules for its rules.
+   below). The Contact page form instead POSTs to a Google Apps
+   Script Web App (APPS_SCRIPT_URL below / Code.gs), which emails
+   the enquiry to info@excursiondazzle.in. If that fails or hasn't
+   been configured yet, it falls back to WhatsApp automatically.
    ================================================================ */
 (function () {
   'use strict';
@@ -14,21 +14,27 @@
   var WA_NUM  = '919797706312';
   var TEL     = 'tel:+919797706312';
 
+  /* Google Apps Script Web App URL for the contact form mailer.
+     Deploy Code.gs (see the setup comment inside it), then paste
+     the resulting /exec URL here. Until this is set, the contact
+     form automatically falls back to opening WhatsApp instead. */
+  var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzFKa3j2MKmI9jCHYyX89RF2g2muMvY8qHKMo0ffgqCy8nTgUXW-cFeVfNfhGa-ARBGLw/exec';
+
   /* TODO: replace with the Excursion Dazzle Firebase project config
      if this site should run on its own project instead of reusing
      the existing one. Structure/behaviour is unchanged either way. */
   var FB_CFG = {
-    apiKey: "AIzaSyDC1N1z6dwtIP3y_OfiAbHK2ORzrvuyX5g",
-  authDomain: "excuprsion-dazzle.firebaseapp.com",
-  projectId: "excuprsion-dazzle",
-  storageBucket: "excuprsion-dazzle.firebasestorage.app",
-  messagingSenderId: "563908059641",
-  appId: "1:563908059641:web:feb050f26dfdaed95a5d28"
+    apiKey:            "AIzaSyCbsulWfheIDKZt5OShd82rkA9WVjXn2Xk",
+    authDomain:        "tirangatourandtravels.firebaseapp.com",
+    projectId:         "tirangatourandtravels",
+    storageBucket:     "tirangatourandtravels.firebasestorage.app",
+    messagingSenderId: "62225585711",
+    appId:             "1:62225585711:web:3540a255538d3556b758da"
   };
 
   var COLS = {
     tours: 'edazzle_tours', cars: 'edazzle_cars',
-    gallery: 'edazzle_gallery', mail: 'edazzle_mail'
+    gallery: 'edazzle_gallery'
   };
 
   /* ── DEFAULTS ─────────────────────────────────────────────── */
@@ -506,15 +512,14 @@
 
   /* ══════════════════════════════════════════════════
      CONTACT FORM
-     Submissions are written to the Firestore collection
-     COLS.mail ('edazzle_mail'). This collection is watched by
-     the "Trigger Email" Firebase Extension, which sends the
-     enquiry straight to info@excursiondazzle.in and then removes
-     the document — nothing is kept in the admin panel or shown
-     to the public; it only ever exists briefly as an outgoing
-     email queue item. See firestore.rules for the security rules
-     that lock this collection to write-only, no read/update/delete
-     from the browser.
+     Submissions are POSTed to a Google Apps Script Web App
+     (APPS_SCRIPT_URL above / Code.gs), which emails the full
+     enquiry straight to info@excursiondazzle.in. Nothing is
+     written to Firestore or shown in the admin panel — it only
+     ever exists as an outgoing email. If the request fails, times
+     out, or APPS_SCRIPT_URL hasn't been configured yet, the form
+     automatically falls back to opening WhatsApp instead, so no
+     enquiry is ever silently lost.
   ══════════════════════════════════════════════════ */
   var cForm = document.getElementById('contactForm');
   if (cForm) {
@@ -566,32 +571,64 @@
         '<p style="font-family:sans-serif;font-size:12px;color:#888;margin-top:16px">Submitted via the Contact page on excursiondazzle.in</p>';
       var textBody = rows.map(function(r) { return r[0] + ': ' + r[1]; }).join('\n');
 
-      onFB(function(db, f) {
-        f.addDoc(f.collection(db, COLS.mail), {
-          to: ['info@excursiondazzle.in'],
-          message: {
-            subject: 'New Website Enquiry from ' + name,
-            text: textBody,
-            html: htmlBody
-          },
-          replyTo: email,
-          createdAt: f.serverTimestamp()
-        }).then(function() {
-          showThankYou();
-        }).catch(function(err) {
-          console.warn('Enquiry send error:', err);
-          toast('Something went wrong — please try WhatsApp or call us instead.', 'err');
-          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Enquiry'; }
+      var waText = 'Hi Excursion Dazzle Tour & Travel! New enquiry:\n' +
+        rows.map(function(r) { return r[0] + ': ' + r[1]; }).join('\n');
+      var waFallbackLink = 'https://wa.me/' + WA_NUM + '?text=' + encodeURIComponent(waText);
+      var handled = false;
+
+      function fallbackToWhatsApp(reason) {
+        if (handled) return;
+        handled = true;
+        console.warn('Enquiry email failed, falling back to WhatsApp:', reason);
+        window.open(waFallbackLink, '_blank');
+        showThankYou(true);
+      }
+
+      // Safety net: if the Apps Script endpoint never responds within 9s
+      // (not deployed yet, network blocked, quota exceeded, etc.), don't
+      // leave the visitor stuck on a spinning button — send via WhatsApp.
+      var failSafe = setTimeout(function() { fallbackToWhatsApp('timeout'); }, 9000);
+
+      if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PASTE_YOUR') === 0) {
+        clearTimeout(failSafe);
+        fallbackToWhatsApp('Apps Script URL not configured');
+      } else {
+        fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids CORS preflight — Apps Script still reads the JSON body fine
+          body: JSON.stringify({ name: name, phone: phone, email: email, rows: rows, text: textBody, html: htmlBody })
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(json) {
+          clearTimeout(failSafe);
+          if (json && json.result === 'success') {
+            if (!handled) { handled = true; showThankYou(false); }
+          } else {
+            fallbackToWhatsApp(json && json.message);
+          }
+        })
+        .catch(function(err) {
+          clearTimeout(failSafe);
+          fallbackToWhatsApp(err);
         });
-      });
+      }
     });
   }
 
-  function showThankYou() {
+  function showThankYou(viaWhatsApp) {
     var formWrap = document.getElementById('contactFormWrap');
     var ok = document.getElementById('formSuccess');
     if (formWrap) formWrap.style.display = 'none';
-    if (ok) { ok.style.display = 'block'; ok.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    if (ok) {
+      var msg = ok.querySelector('p');
+      if (msg) {
+        msg.innerHTML = viaWhatsApp
+          ? 'We couldn\'t reach our email system just now, so we opened WhatsApp with your enquiry ready to send — just hit send there and we\'ll reply shortly.'
+          : 'Your enquiry has been sent to our team at <strong>info@excursiondazzle.in</strong>. We\'ll get back to you by email shortly — usually within a few hours.';
+      }
+      ok.style.display = 'block';
+      ok.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   }
   window.showThankYou = showThankYou;
 
